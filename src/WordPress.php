@@ -241,6 +241,76 @@ class WordPress extends EE_Site_Command {
 	}
 
 	/**
+	 * Update a site.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<site-name>]
+	 * : Name of website.
+	 *
+	 * [--type=<site-type>]
+	 * : Update to valid and supported site-type.
+	 *
+	 * [--php=<php-version>]
+	 * : Update to valid and supported php version.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Update php version
+	 *     $ ee site update example.com --php=7.1
+	 */
+	public function update( $args, $assoc_args ) {
+
+		\EE\Utils\delem_log( 'site update start' );
+		
+		$args             = auto_site_name( $args, 'wp', __FUNCTION__ );
+		$this->site_data  = get_site_info( $args, false, true, false );
+
+		$version_to_update = \EE\Utils\get_flag_value( $assoc_args, 'php' );
+
+		if ( $this->site_data->php_version === $version_to_update ) {
+			\EE::error( sprintf('%s is already using php%s',$this->site_data->site_url,$this->site_data->php_version ) );
+		}
+
+		$image_corresponding_to_version = \EE\Utils\get_tag_if_available( 'easyengine/php',$version_to_update );
+
+		if( ! $image_corresponding_to_version ) {
+			\EE::error( "Invalid/Unsupported version: $version_to_update" );
+		}
+
+		\EE::log( 'Starting update' );
+
+		$this->dump_docker_compose_yml( ['php_image_tag' => $image_corresponding_to_version ] );
+
+		if( \EE::docker()::docker_compose_up( $this->site_data->site_fs_path, [ 'php' ] ) ) {
+			$this->site_data->php_version = $version_to_update;
+			$this->site_data->save();
+			\EE::success( "{$this->site_data->site_url} successfully updated to php{$this->site_data->php_version}" );
+		} else{
+			// Rollback
+			$image_corresponding_to_version = \EE\Utils\get_tag_if_available( 'easyengine/php',$this->site_data->php_version );
+			$this->dump_docker_compose_yml( ['php_image_tag' => $image_corresponding_to_version ] );
+		}
+
+	}
+
+	private function dump_docker_compose_yml( $additional_filters = [] ) {
+
+		$site_docker_yml = $this->site_data->site_fs_path . '/docker-compose.yml';
+
+		$filter                     = [];
+		$filter[]                   = $this->site_data->app_sub_type;
+		$filter[]                   = $this->site_data->cache_nginx_fullpage ? 'redis' : 'none';
+		$filter[]                   = $this->site_data->db_host;
+		foreach($additional_filters as $key=>$addon_filter ) {
+			$filter[$key]  = $addon_filter;
+		}
+		$site_docker                = new Site_WP_Docker();
+		$docker_compose_content = $site_docker->generate_docker_compose_yml( $filter );
+		$this->fs->dumpFile( $site_docker_yml, $docker_compose_content );
+	}
+
+	/**
 	 * Creates database user for a site
 	 *
 	 * @param string $site_url URL of site.
