@@ -275,6 +275,62 @@ class WordPress extends EE_Site_Command {
 	}
 
 	/**
+	 * Update a site.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<site-name>]
+	 * : Name of website.
+	 *
+	 * [--type=<site-type>]
+	 * : Update to valid and supported site-type.
+	 *
+	 * [--cache]
+	 * : Enable cache on site.
+	 *
+	 * [--ssl=<ssl>]
+	 * : Enable cache on site.
+	 *
+	 * [--wildcard]
+	 * : Enable cache on site.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Update a html site to php.
+	 *     $ ee site update example.com --type=php
+	 */
+	public function update( $args, $assoc_args ) {
+		$args            = \EE\Site\Utils\auto_site_name( $args, __FUNCTION__, 'site' );
+		$type            = \EE\Utils\get_flag_value( $assoc_args, 'type' );
+		$this->site_data = get_site_info( $args );
+
+		if( $type ) {
+			//TODO: take it from db
+			$this->site_data['cache_host'] = 'global-redis';
+
+			if ( $type && ! in_array( $this->site_data['site_type'], [ 'php','html' ] ) ) {
+				\EE::error( $this->site_data['site_type'] . ' site cannot be updated to wp' );
+			}
+
+			EE::runcommand( 'site backup ' . $this->site_data['site_url'] );
+			EE::runcommand( 'site disable ' . $this->site_data['site_url'] );
+
+			EE::exec( sprintf( 'rm -rf %1$s/app/src/*; rm -rf %1$s/config/*; rm -f %1$s/.env && rm -f %1$s/docker-compose.yml', $this->site_data['site_fs_path'] ) );
+
+			$this->configure_site_files();
+
+			if ( ! empty( $this->site_data['site_ssl'] ) ) {
+				$this->dump_docker_compose_yml( [ 'nohttps' => false ] );
+			}
+			$site            = Site::find( $this->site_data['site_url'] );
+			$site->site_type = 'wp';
+			$site->save();
+
+			EE::runcommand( 'site enable ' . $this->site_data['site_url'] );
+		}
+	}
+
+	/**
 	 * Display all the relevant site information, credentials and useful links.
 	 *
 	 * [<site-name>]
