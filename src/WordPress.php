@@ -342,6 +342,7 @@ class WordPress extends EE_Site_Command {
 			$this->force = true;
 			$this->wp_download_and_config( [] );
 			$this->install_wp();
+			$this->add_wp_cron();
 
 			$site            = Site::find( $this->site_data['site_url'] );
 			$site->site_type = 'wp';
@@ -584,13 +585,19 @@ class WordPress extends EE_Site_Command {
 		}
 
 		$this->create_site_db_entry();
+		$this->add_wp_cron();
+		$this->info( [ $this->site_data['site_url'] ], [] );
+		\EE::log( 'Site entry created.' );
+	}
 
+	/**
+	 * This function adds cron after WP installation.
+	 * This cron runs "wp cron event run --due-now" periodically to ensure wp crons are triggered on time
+	 */
+	private function add_wp_cron() {
 		\EE::log( 'Creating cron entry' );
 		\EE::runcommand( 'cron create ' . $this->site_data['site_url'] . ' --user=www-data --command=\'wp cron event run --due-now\' --schedule=\'@every 5m\'' );
 		\EE::exec( 'cd ' . $this->site_data['site_fs_path'] . ' && docker-compose exec php wp cron event run --due-now' );
-
-		$this->info( [ $this->site_data['site_url'] ], [] );
-		\EE::log( 'Site entry created.' );
 	}
 
 	/**
