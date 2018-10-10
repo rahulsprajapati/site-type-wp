@@ -1,7 +1,7 @@
 <?php
 
 namespace EE\Site\Type;
-use function \EE\Utils\mustache_render;
+use function EE\Utils\mustache_render;
 
 class Site_WP_Docker {
 
@@ -91,7 +91,16 @@ class Site_WP_Docker {
 				[ 'name' => 'VIRTUAL_HOST' ],
 			],
 		];
-		$php['networks']    = $network_default;
+		if ( in_array( GLOBAL_DB, $filters, true ) ) {
+			$php['networks'] = [
+				'net' => [
+					[ 'name' => 'site-network' ],
+					[ 'name' => 'global-backend-network' ],
+				],
+			];
+		} else {
+			$php['networks'] = $network_default;
+		}
 
 		// nginx configuration.
 		$nginx['service_name']               = [ 'name' => 'nginx' ];
@@ -108,12 +117,15 @@ class Site_WP_Docker {
 				[ 'name' => 'HSTS=off' ],
 			],
 		];
+		if ( ! empty( $filters['nohttps'] ) ) {
+			$nginx['environment']['env'][] = [ 'name' => 'HTTPS_METHOD=nohttps' ];
+		}
 		$nginx['volumes']     = [
 			'vol' => [
 				[ 'name' => './app/src:/var/www/htdocs' ],
-				[ 'name' => './config/nginx/default.conf:/etc/nginx/conf.d/default.conf' ],
+				[ 'name' => './config/nginx/main.conf:/etc/nginx/conf.d/default.conf' ],
+				[ 'name' => './config/nginx/custom:/etc/nginx/custom' ],
 				[ 'name' => './logs/nginx:/var/log/nginx' ],
-				[ 'name' => './config/nginx/common:/usr/local/openresty/nginx/conf/common' ],
 			],
 		];
 		$nginx['labels']      = [
@@ -123,10 +135,20 @@ class Site_WP_Docker {
 		];
 		$nginx['networks']    = [
 			'net' => [
-				[ 'name' => 'site-network' ],
-				[ 'name' => 'global-network' ],
+				[
+					'name' => 'site-network',
+					'aliases' => [
+						'alias' => [
+							'name' => '${VIRTUAL_HOST}',
+						],
+					],
+				],
+				[ 'name' => 'global-frontend-network' ],
 			]
 		];
+		if ( in_array( GLOBAL_REDIS, $filters, true ) ) {
+			$nginx['networks']['net'][] = [ 'name' => 'global-backend-network' ];
+		}
 
 		// mailhog configuration.
 		$mailhog['service_name'] = [ 'name' => 'mailhog' ];
@@ -148,7 +170,7 @@ class Site_WP_Docker {
 		$mailhog['networks']     = [
 			'net' => [
 				[ 'name' => 'site-network' ],
-				[ 'name' => 'global-network' ],
+				[ 'name' => 'global-frontend-network' ],
 			]
 		];
 
@@ -170,7 +192,6 @@ class Site_WP_Docker {
 			],
 		];
 		$postfix['networks']     = $network_default;
-
 
 		// redis configuration.
 		$redis['service_name'] = [ 'name' => 'redis' ];
